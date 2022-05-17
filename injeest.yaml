@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: injeest-{NAME}
+spec:
+  serviceAccountName: tekton-pipeline-sa
+  restartPolicy: Never
+  initContainers:
+    - name: clone
+      image: golang:1.18
+      #imagePullPolicy: Always
+      env:
+        - name: GOCACHE
+          value: /work/.cache
+        - name: SCRIPT
+          value: |
+            set -e
+            git clone git@github.com:{GIT_REPO}.git .
+            git fetch origin {GIT_REF}
+            git reset --hard {GIT_SHA}
+            git checkout {GIT_SHA}
+            ls
+      command: ['bash', '-c', '$(SCRIPT)']
+      workingDir: /work
+      volumeMounts:
+        - name: secrets
+          mountPath: /root/.ssh # must mount to ~/.ssh
+        - name: work
+          mountPath: /work
+    - name: build
+      image: golang:1.18
+      env:
+        - name: GOCACHE
+          value: /work/.cache
+        - name: BLOCKER
+          value: {BLOCKER}
+        - name: SCRIPT
+          value: |
+            set -e
+            echo "GOCACHE: $GOCACHE"
+            go build
+            mkdir injeest
+            echo $BLOCKER | base64 -d > injeest/blocker.go
+            go build -o injeest/blocker injeest/blocker.go
+      command: [ 'bash', '-c', '$(SCRIPT)' ]
+      workingDir: /work
+      volumeMounts:
+        - name: work
+          mountPath: /work
+  containers:
+    - name: upload-server
+      image: golang:1.18
+      env:
+        - name: UPLOAD_SERVER
+          value: {UPLOAD_SERVER}
+      command: [ 'bash', '-c', 'echo $UPLOAD_SERVER | base64 -d > uploadserver.go && go run uploadserver.go' ]
+      workingDir: /work
+      volumeMounts:
+        - name: work
+          mountPath: /work
+    - name: test
+      image: golang:1.18
+      command: [ '/work/injeest/blocker' ]
+      workingDir: /work
+      env:
+        - name: debugtest
+          value: "true"
+      volumeMounts:
+        - name: secrets
+          mountPath: /etc/secrets
+        - name: work
+          mountPath: /work
+  volumes:
+    - name: secrets
+      secret:
+        secretName: pipeline-secrets
+        defaultMode: 0400
+    - name: work
+      emptyDir: { }
