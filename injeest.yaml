@@ -19,7 +19,6 @@ spec:
             git fetch origin {GIT_REF}
             git reset --hard {GIT_SHA}
             git checkout {GIT_SHA}
-            ls
       command: ['bash', '-c', '$(SCRIPT)']
       workingDir: /work
       volumeMounts:
@@ -30,8 +29,6 @@ spec:
     - name: build
       image: golang:1.18
       env:
-        - name: GOCACHE
-          value: /work/.cache
         - name: BLOCKER
           value: {BLOCKER}
         - name: SCRIPT
